@@ -28,12 +28,13 @@ time = 0
 state = 0
 sx = 0
 sy = 0
+battery_left = 0
 
 def battery_callback(event):
-    print 'time for battery to drain' + str(event.current_real)
+    print "time for battery to drain " + str(event.current_real)
 
 def timelimit_callback(event):
-    print 'time to end this' + str(event.current_real)
+    print "time to end this " + str(event.current_real)
 
 def init_listener():
     rospy.init_node('listener', anonymous=True)
@@ -50,16 +51,20 @@ def location_callback(data):
             data.pose.pose.orientation.w)
     t = transform.euler_from_quaternion(q)[2] # in [-pi, pi]
     current_location.update_location(p.x, p.y, t)
+    print "CALLBACK LOCATION"
     if state == None:
         pass
-    elif state = 2 and current_location.distance(sx,sy) > 20:
+    elif state == 2 and current_location.distance(bug.sx,bug.sy) > 20:
         print "Should Robot continue ot goal?(G) or return to start (S)"
+        #name = sys.stdin
         name = raw_input("Should Robot continue ot goal?(G) or return to start (S)")
-    elif state = 1
+    elif state == 1:
         print "Should I go further? (Y/N) "
+        #name = sys.stdin
         name = raw_input("Should I go further? (Y/N) ")
-    elif state = 0
+    elif state == 0:
         print "Should I go faster? (Y/N) "
+        #name = sys.stdin
         name = raw_input("Should I go faster? (Y/N) ")
 
 
@@ -71,6 +76,9 @@ class Bug:
         self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         self.tx = tx
         self.ty = ty
+        self.sx = 0
+        self.sy = 0
+        self.speed = 1
         self.battery = battery
 
     def go(self, direction):
@@ -127,7 +135,7 @@ class Bug0(Bug):
         (x, y, t) = current_location.current_location()
         dir_to_go = current_location.global_to_local(necessary_heading(x, y, tx, ty))
         at = current_dists.at(dir_to_go)
-        if at > 10 or self.battery < 30:
+        if at > 10:
             print "Leaving wall"
             return True
         return False
@@ -142,14 +150,13 @@ def bug_algorithm(bug):
     print "Calibrating sensors..."
     # This actually just lets the sensor readings propagate into the system
     rospy.sleep(1)
-    sx = current_location.x
-    sy = current_location.y
-    print "Calibrated"
+    (bug.sx,bug.sy,_) = current_location.current_location()
+    print "Calibrated: Start Position " + str(bug.sx) + " " + str(bug.sy) + " End Position " + str(bug.tx) + " " + str(bug.ty) + " Bug Battery " + str(bug.battery)
     if current_location.distance(tx, ty) > 20:
         state = 2
     elif 20 > current_location.distance(tx, ty) > 10:
         state = 1
-    elif 20 > current_location.distance(tx, ty) > 10:
+    elif 10 > current_location.distance(tx, ty) > 0:
         state = 0
 
     while current_location.distance(tx, ty) > delta:
