@@ -24,23 +24,10 @@ LEFT = 1
 RIGHT = 2
 MSG_STOP = 3
 
-time = 0
-state = 0
-sx = 0
-sy = 0
-battery_left = 0
-
-def battery_callback(event):
-    print "time for battery to drain " + str(event.current_real)
-
-def timelimit_callback(event):
-    print "time to end this " + str(event.current_real)
-
 def init_listener():
     rospy.init_node('listener', anonymous=True)
     rospy.Subscriber('base_pose_ground_truth', Odometry, location_callback)
     rospy.Subscriber('base_scan', LaserScan, sensor_callback)
-
 
 def location_callback(data):
     p = data.pose.pose.position
@@ -51,35 +38,15 @@ def location_callback(data):
             data.pose.pose.orientation.w)
     t = transform.euler_from_quaternion(q)[2] # in [-pi, pi]
     current_location.update_location(p.x, p.y, t)
-    print "CALLBACK LOCATION"
-    if state == None:
-        pass
-    elif state == 2 and current_location.distance(bug.sx,bug.sy) > 20:
-        print "Should Robot continue ot goal?(G) or return to start (S)"
-        #name = sys.stdin
-        name = raw_input("Should Robot continue ot goal?(G) or return to start (S)")
-    elif state == 1:
-        print "Should I go further? (Y/N) "
-        #name = sys.stdin
-        name = raw_input("Should I go further? (Y/N) ")
-    elif state == 0:
-        print "Should I go faster? (Y/N) "
-        #name = sys.stdin
-        name = raw_input("Should I go faster? (Y/N) ")
-
 
 def sensor_callback(data):
     current_dists.update(data)
 
 class Bug:
-    def __init__(self, tx, ty, battery):
+    def __init__(self, tx, ty):
         self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         self.tx = tx
         self.ty = ty
-        self.sx = 0
-        self.sy = 0
-        self.speed = 1
-        self.battery = battery
 
     def go(self, direction):
         cmd = Twist()
@@ -150,33 +117,35 @@ def bug_algorithm(bug):
     print "Calibrating sensors..."
     # This actually just lets the sensor readings propagate into the system
     rospy.sleep(1)
-    (bug.sx,bug.sy,_) = current_location.current_location()
-    print "Calibrated: Start Position " + str(bug.sx) + " " + str(bug.sy) + " End Position " + str(bug.tx) + " " + str(bug.ty) + " Bug Battery " + str(bug.battery)
-    if current_location.distance(tx, ty) > 20:
-        state = 2
-    elif 20 > current_location.distance(tx, ty) > 10:
-        state = 1
-    elif 10 > current_location.distance(tx, ty) > 0:
-        state = 0
+    print "Calibrated"
 
     while current_location.distance(tx, ty) > delta:
-        rospy.Timer(rospy.Duration(10), battery_callback)
-        rospy.Timer(rospy.Duration(120), timelimit_callback)
         hit_wall = bug.go_until_obstacle()
         if hit_wall:
             bug.follow_wall()
     print "Arrived at", (tx, ty)
 
 # Parse arguments
-
-if len(sys.argv) < 3:
-    print "Usage: rosrun bugs bug.py X Y"
+algorithm = sys.argv[1]
+algorithms = ["bug0", "bug1", "bug2"]
+if algorithm not in algorithms:
+    print "First argument should be one of ", algorithms, ". Was ", algorithm
     sys.exit(1)
-(tx, ty) = map(float, sys.argv[1:3])
+
+if len(sys.argv) < 4:
+    print "Usage: rosrun bugs bug.py ALGORITHM X Y"
+    sys.exit(1)
+(tx, ty) = map(float, sys.argv[2:4])
 
 
 
 print "Setting target:", (tx, ty)
-bug = Bug0(tx, ty, 100)
+bug = None
+if algorithm == "bug0":
+    bug = Bug0(tx, ty)
+elif algorithm == "bug1":
+    bug = Bug1(tx, ty)
+elif algorithm == "bug2":
+    bug = Bug2(tx, ty)
 
 bug_algorithm(bug)
