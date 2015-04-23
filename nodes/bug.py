@@ -58,6 +58,7 @@ class Bug:
         self.speed = .5
         self.meters10=False
         self.meters20=False
+        self.greater20=False
         self.rechargers = [
             [random.randrange(0,20),random.randrange(0,20)],
             [random.randrange(0,20),random.randrange(0,20)],
@@ -145,7 +146,7 @@ class Bug:
         self.goal=current_location.current_location()[0:2]
 
     def statechange(self):
-        if self.battery < 30  and self.goal not in self.rechargers:
+        if self.battery < 30  and self.goal not in self.rechargers and distance(self.goal,*current_location.distance()[0:2]) < 10:
             return "RECHARGE"
         if self.battery == 0:
             print "Battery Reached Zero Robot Failed"
@@ -153,17 +154,19 @@ class Bug:
         if self.goal in self.rechargers and current_location.distance(*self.goal) <= delta+.2):
             return "RECHARGED"
         if distance(self.goal,*current_location.distance()[0:2]) < 10 and not self.meters10:
-            ans = raw_input("Robot is less than 10meters to goal. Increase speed? (Y/N)")
-            if ans == "y":
+            ans = raw_input("Robot is less than 10 meters to goal. Should robot increase speed? (Y/N)")
+            if ans == "y" or ans=="Y":
                 self.speed = 1
             self.meters10=True
-        if distance(self.start,*current_location.distance()[0:2]) > 20 and distance(self.goal,*current_location.distance()[0:2]) > 20 and not self.meters10 and not self.meters20:
+        if distance(self.start,*current_location.distance()[0:2]) > 20 and distance(self.goal,*current_location.distance()[0:2]) > 20 and not self.meters10 and not self.meters20 and not self.greater20:
             ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
-            if ans == "g":
+            greater20=True
+            if ans == "g" or ans == "G":
                 print "Continuing to goal"
             else:
                 print "Returning to Start"
                 return "TOSTART"
+        return "GO_UNTIL_OBSTACLE"
 
         rospy.sleep(.1)
 
@@ -177,11 +180,11 @@ class Bug:
 
     def timelimit_callback(self):
         print "It has been 2 minutes. Going back to start"
-        return "GO_TO_START"
+        return "TOSTART"
 
     def step(self):
-        self.state = self.states[self.state](self) # did I stutter?
-        self.statechange()
+        self.state=self.statechange()
+        #self.state = self.states[self.state](self) # did I stutter?
         rospy.sleep(.1)
 
 if __name__ == "__main__":
