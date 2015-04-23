@@ -42,22 +42,6 @@ def location_callback(data):
 def sensor_callback(data):
     current_dists.update(data)
 
-def battery_callback(event):
-    bug.battery = bug.battery-1;
-    print "time for battery to drain " + str(bug.battery)
-    if bug.battery < 30:
-        return "RECHARGE"
-    elif bug.battery == 30:
-        Bug.speed=0
-        print "Battery Reached Zero Robot Failed"
-        return "DEATH"
-
-def timelimit_callback(event):
-    state = 4;
-    bug = Bug0(bug.sx,bug.sy,bug.battery)
-    bug_algorithm(bug)
-    print "It has been 2 minutes. Going back to start"
-
 class Bug:
     def __init__(self, gx, gy, sx ,sy):
         self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
@@ -72,6 +56,7 @@ class Bug:
             'FOLLOW_WALL': lambda x: x.follow_wall(),
             'RECHARGE': lambda x: x.recharging(),
             'DEATH': lambda x: x.death(),
+            'GO_TO_START': lambda x: x.back_to_start(),
         }
 
     def go_until_obstacle(self):
@@ -126,8 +111,31 @@ class Bug:
             pass
         self.pub.publish(cmd)
 
-    def recharge(self):
-        
+    def recharging(self):
+        self.temp=self.goal
+
+    def back_to_start(self):
+        self.goal=self.start
+        return "GO_UNTIL_OBSTACLE"
+
+    def death(self):
+        self.goal=self.start
+        return "GO_UNTIL_OBSTACLE"
+
+    def battery_callback(self):
+    self.battery = self.battery-1;
+    print "Battery Left" + str(self.battery)
+    if self.battery < 30:
+        return "RECHARGE"
+    elif self.battery == 30:
+        self.speed=0
+        print "Battery Reached Zero Robot Failed"
+        return "DEATH"
+
+    def timelimit_callback(self):
+        print "It has been 2 minutes. Going back to start"
+        return "GO_TO_START"
+
 
     def step(self):
         self.state = self.states[self.state](self) # did I stutter?
@@ -139,15 +147,16 @@ if __name__ == "__main__":
         sys.exit(1)
 
     (gx, gy) = map(float, sys.argv[1:3])
-    rospy.Timer(rospy.Duration(10), battery_callback)
-    rospy.Timer(rospy.Duration(120), timelimit_callback)
-    print "Setting target:", (tx, ty)
+    print "Setting target:", (gx, gy)
     bug = Bug(gx, gy)
     init_listener()
     print "Calibrating sensors..."
     # This actually just lets the sensor readings propagate into the system
-    rospy.sleep(1)
+    (ix, iy, _) = current_location.current_location()
+    bug.initial = (ix, iy)
     print "Calibrated"
+    rospy.Timer(rospy.Duration(10), lambda _: bug.battery_callback())
+    rospy.Timer(rospy.Duration(120), lambda _: bug.timelimit_callback())
 
-    while current_location.distance(slef.goal) > delta:
+    while current_location.distance(self.goal) > delta:
         bug.step()
