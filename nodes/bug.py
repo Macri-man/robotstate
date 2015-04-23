@@ -42,16 +42,82 @@ def location_callback(data):
 def sensor_callback(data):
     current_dists.update(data)
 
-class Bug:
-    def __init__(self, tx, ty):
-        self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
-        self.tx = tx
-        self.ty = ty
+def battery_callback(event):
+    bug.battery = bug.battery-1;
+    print "time for battery to drain " + str(bug.battery)
+    if bug.battery < 30:
+        return "RECHARGE"
+    elif bug.battery == 30:
+        Bug.speed=0
+        print "Battery Reached Zero Robot Failed"
+        return "DEATH"
 
-    def go(self, direction):
+def timelimit_callback(event):
+    state = 4;
+    bug = Bug0(bug.sx,bug.sy,bug.battery)
+    bug_algorithm(bug)
+    print "It has been 2 minutes. Going back to start"
+
+class Bug:
+    def __init__(self, gx, gy, sx ,sy):
+        self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
+        self.goal = (gx,gy)
+        self.temp = (NONE,NONE)
+        self.start = (sx,sy)
+        self.battery = 100
+        self.speed = .5
+        self.state = "GO_UNTIL_OBSTACLE"
+        self.states = {
+            'GO_UNTIL_OBSTACLE': lambda x: x.go_until_obstacle(),
+            'FOLLOW_WALL': lambda x: x.follow_wall(),
+            'RECHARGE': lambda x: x.recharging(),
+            'DEATH': lambda x: x.death(),
+        }
+
+    def go_until_obstacle(self):
+        (front, _) = current_dists.get()
+        if front <= WALL_PADDING:
+            return "FOLLOW_WALL"
+        if current_location.facing_point(self.goal):
+            self.go(STRAIGHT, self.speed)
+        elif current_location.faster_left(self.goal):
+            self.go(LEFT, self.speed)
+        else:
+            self.go(RIGHT, self.speed)
+        return "GO_UNTIL_OBSTACLE"
+
+    def follow_wall(self):
+        if current_dists.get()[0] <= WALL_PADDING:
+            self.go(RIGHT, self.speed)
+            return "FOLLOW_WALL"
+        if not self.should_leave_wall():
+            (front, left) = current_dists.get()
+            if front <= WALL_PADDING:
+                self.go(RIGHT, self.speed)
+            elif WALL_PADDING - .1 <= left <= WALL_PADDING + .1:
+                self.go(STRAIGHT, self.speed)
+            elif left > WALL_PADDING + .1:
+                self.go(LEFT, self.speed)
+            else:
+                self.go(RIGHT, self.speed)
+            return "FOLLOW_WALL"
+        else:
+            return "GO_UNTIL_OBSTACLE"
+
+    def should_leave_wall(self):
+        (x, y, t) = current_location.current_location()
+        dir_to_go = current_location.global_to_local(necessary_heading(x, y,self.goal.x,self.goal.y))
+        at = current_dists.at(dir_to_go)
+        (_, left) = current_dists.get()
+        if at > 10 and left > 10:
+            print "Leaving wall"
+            return True
+        return False
+
+    def go(self, direction, speed):
         cmd = Twist()
         if direction == STRAIGHT:
-            cmd.linear.x = 1
+            cmd.linear.x = speed
         elif direction == LEFT:
             cmd.angular.z = 0.25
         elif direction == RIGHT:
@@ -60,92 +126,28 @@ class Bug:
             pass
         self.pub.publish(cmd)
 
-    def go_until_obstacle(self):
-        print "Going until destination or obstacle"
-        while current_location.distance(tx, ty) > delta:
-            (frontdist, _) = current_dists.get()
-            if frontdist <= WALL_PADDING:
-                return True
+    def recharge(self):
+        
 
-            if current_location.facing_point(tx, ty):
-                self.go(STRAIGHT)
-            elif current_location.faster_left(tx, ty):
-                self.go(LEFT)
-            else:
-                self.go(RIGHT)
-            rospy.sleep(.01)
-        return False
+    def step(self):
+        self.state = self.states[self.state](self) # did I stutter?
+        rospy.sleep(.1)
 
-    def follow_wall(self):
-        print "Following wall"
-        while current_dists.get()[0] <= WALL_PADDING:
-            self.go(RIGHT)
-            rospy.sleep(.01)
-        while not self.should_leave_wall():
-            (front, left) = current_dists.get()
-            if front <= WALL_PADDING:
-                self.go(RIGHT)
-            elif WALL_PADDING - .1 <= left <= WALL_PADDING + .1:
-                self.go(STRAIGHT)
-            elif left > WALL_PADDING + .1:
-                self.go(LEFT)
-            else:
-                self.go(RIGHT)
-            rospy.sleep(.01)
-
-    def should_leave_wall(self):
-        print "You dolt! You need to subclass bug to know how to leave the wall"
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print "Usage: rosrun bugs bug.py X Y"
         sys.exit(1)
 
-class Bug0(Bug):
-    def should_leave_wall(self):
-        (x, y, t) = current_location.current_location()
-        dir_to_go = current_location.global_to_local(necessary_heading(x, y, tx, ty))
-        at = current_dists.at(dir_to_go)
-        if at > 10:
-            print "Leaving wall"
-            return True
-        return False
-
-def near(cx, cy, x, y):
-    nearx = x - .3 <= cx <= x + .3
-    neary = y - .3 <= cy <= y + .3
-    return nearx and neary
-
-def bug_algorithm(bug):
+    (gx, gy) = map(float, sys.argv[1:3])
+    rospy.Timer(rospy.Duration(10), battery_callback)
+    rospy.Timer(rospy.Duration(120), timelimit_callback)
+    print "Setting target:", (tx, ty)
+    bug = Bug(gx, gy)
     init_listener()
     print "Calibrating sensors..."
     # This actually just lets the sensor readings propagate into the system
     rospy.sleep(1)
     print "Calibrated"
 
-    while current_location.distance(tx, ty) > delta:
-        hit_wall = bug.go_until_obstacle()
-        if hit_wall:
-            bug.follow_wall()
-    print "Arrived at", (tx, ty)
-
-# Parse arguments
-algorithm = sys.argv[1]
-algorithms = ["bug0", "bug1", "bug2"]
-if algorithm not in algorithms:
-    print "First argument should be one of ", algorithms, ". Was ", algorithm
-    sys.exit(1)
-
-if len(sys.argv) < 4:
-    print "Usage: rosrun bugs bug.py ALGORITHM X Y"
-    sys.exit(1)
-(tx, ty) = map(float, sys.argv[2:4])
-
-
-
-print "Setting target:", (tx, ty)
-bug = None
-if algorithm == "bug0":
-    bug = Bug0(tx, ty)
-elif algorithm == "bug1":
-    bug = Bug1(tx, ty)
-elif algorithm == "bug2":
-    bug = Bug2(tx, ty)
-
-bug_algorithm(bug)
+    while current_location.distance(slef.goal) > delta:
+        bug.step()
