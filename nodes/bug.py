@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+#Help from Ethan Miller
+
 import math
 import sys
 import random
@@ -25,6 +27,9 @@ LEFT = 1
 RIGHT = 2
 MSG_STOP = 3
 
+def distance(p1, p2):
+    return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
+
 def init_listener():
     rospy.init_node('listener', anonymous=True)
     rospy.Subscriber('base_pose_ground_truth', Odometry, location_callback)
@@ -37,7 +42,7 @@ def location_callback(data):
             data.pose.pose.orientation.y,
             data.pose.pose.orientation.z,
             data.pose.pose.orientation.w)
-    t = transform.euler_from_quaternion(q)[2] # in [-pi, pi]
+    t = transform.euler_from_quaternion(q)[2]
     current_location.update_location(p.x, p.y, t)
 
 def sensor_callback(data):
@@ -50,20 +55,23 @@ class Bug:
         self.temp = (NONE,NONE)
         self.start = (sx,sy)
         self.battery = 100
-        self.rechargers = [
-            [random.randrange(0,15),random.randrange(0,15)],
-            [random.randrange(0,15),random.randrange(0,15)],
-            [random.randrange(0,15),random.randrange(0,15)],
-            [random.randrange(0,15),random.randrange(0,15)],
-        ]
         self.speed = .5
+        self.meters10=False
+        self.meters20=False
+        self.rechargers = [
+            [random.randrange(0,20),random.randrange(0,20)],
+            [random.randrange(0,20),random.randrange(0,20)],
+            [random.randrange(0,20),random.randrange(0,20)],
+            [random.randrange(0,20),random.randrange(0,20)],
+        ]
         self.state = "GO_UNTIL_OBSTACLE"
         self.states = {
             'GO_UNTIL_OBSTACLE': lambda x: x.go_until_obstacle(),
             'FOLLOW_WALL': lambda x: x.follow_wall(),
             'RECHARGE': lambda x: x.recharging(),
+            'RECHARGED': lambda x: x.recharged(),
+            'TOSTART': lambda x: x.back_to_start(),
             'DEATH': lambda x: x.death(),
-            'GO_TO_START': lambda x: x.back_to_start(),
         }
 
     def go_until_obstacle(self):
@@ -98,13 +106,10 @@ class Bug:
 
     def should_leave_wall(self):
         (x, y, t) = current_location.current_location()
-        dir_to_go = current_location.global_to_local(necessary_heading(x, y,self.goal.x,self.goal.y))
+        dir_to_go = current_location.global_to_local(necessary_heading(x, y,*self.goal))
         at = current_dists.at(dir_to_go)
         (_, left) = current_dists.get()
-        if at > 10 and left > 10:
-            print "Leaving wall"
-            return True
-        return False
+        return at > 10
 
     def go(self, direction, speed):
         cmd = Twist()
@@ -119,9 +124,17 @@ class Bug:
         self.pub.publish(cmd)
 
     def recharging(self):
-        self.temp=self.goal
-        self.
+        self.temp = self.goal
+        self.goal = self.closest_charger(self.rechargers,*current_location.current_location()[0:2])
+        print "Going to Charging Station at ", self.goal
+        return "GO_UNTIL_OBSTACLE"
 
+
+    def recharged(self):
+        self.goal=self.temp
+        self.battery=100
+        print "Done Charging going to Goal", self.goal
+        return "GO_UNTIL_OBSTACLE"
 
     def back_to_start(self):
         self.goal=self.start
@@ -129,19 +142,38 @@ class Bug:
 
     def death(self):
         self.speed=0
-        self.goal=self.start=self.temp
+        self.goal=current_location.current_location()[0:2]
 
     def statechange(self):
-        if self.battery < 30:
+        if self.battery < 30  and self.goal not in self.rechargers:
             return "RECHARGE"
-        elif self.battery == 30:
+        if self.battery == 0:
             print "Battery Reached Zero Robot Failed"
             return "DEATH"
+        if self.goal in self.rechargers and current_location.distance(*self.goal) <= delta+.2):
+            return "RECHARGED"
+        if distance(self.goal,*current_location.distance()[0:2]) < 10 and not self.meters10:
+            ans = raw_input("Robot is less than 10meters to goal. Increase speed? (Y/N)")
+            if ans == "y":
+                self.speed = 1
+            self.meters10=True
+        if distance(self.start,*current_location.distance()[0:2]) > 20 and distance(self.goal,*current_location.distance()[0:2]) > 20 and not self.meters10 and not self.meters20:
+            ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
+            if ans == "g":
+                print "Continuing to goal"
+            else:
+                print "Returning to Start"
+                return "TOSTART"
 
+        rospy.sleep(.1)
+
+    def closest_charger(rechargers, x, y):
+    distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2, rechargers)
+    return filter(lambda closest: closest[0] == min(distance), zip(distance, rechargers))[0][1]
 
     def battery_callback(self):
-    self.battery = self.battery-1;
-    print "Battery Left" + str(self.battery)
+    self.battery -= 1;
+    print "Battery Left " + str(self.battery)
 
     def timelimit_callback(self):
         print "It has been 2 minutes. Going back to start"
@@ -149,6 +181,7 @@ class Bug:
 
     def step(self):
         self.state = self.states[self.state](self) # did I stutter?
+        self.statechange()
         rospy.sleep(.1)
 
 if __name__ == "__main__":
@@ -158,17 +191,14 @@ if __name__ == "__main__":
 
     (gx, gy) = map(float, sys.argv[1:3])
     print "Setting target:", (gx, gy)
-    bug = Bug(gx, gy)
     init_listener()
+    (sx, sy, _) = current_location.current_location()
+    bug = Bug(gx, gy, sx, sy)
     print "Calibrating sensors..."
     # This actually just lets the sensor readings propagate into the system
-    (ix, iy, _) = current_location.current_location()
-    bug.initial = (ix, iy)
     print "Calibrated"
-    print "Rechargers" 
-    for i in bug.rechargers: print i
     rospy.Timer(rospy.Duration(10), lambda _: bug.battery_callback())
     rospy.Timer(rospy.Duration(120), lambda _: bug.timelimit_callback())
 
-    while current_location.distance(self.goal) > delta:
+    while current_location.distance(*bug.goal) > delta:
         bug.step()
