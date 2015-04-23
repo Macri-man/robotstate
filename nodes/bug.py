@@ -2,6 +2,7 @@
 
 import math
 import sys
+import random
 import roslib; roslib.load_manifest('bugs')
 import rospy
 import tf.transformations as transform
@@ -49,6 +50,12 @@ class Bug:
         self.temp = (NONE,NONE)
         self.start = (sx,sy)
         self.battery = 100
+        self.rechargers = [
+            [random.randrange(0,15),random.randrange(0,15)],
+            [random.randrange(0,15),random.randrange(0,15)],
+            [random.randrange(0,15),random.randrange(0,15)],
+            [random.randrange(0,15),random.randrange(0,15)],
+        ]
         self.speed = .5
         self.state = "GO_UNTIL_OBSTACLE"
         self.states = {
@@ -113,29 +120,32 @@ class Bug:
 
     def recharging(self):
         self.temp=self.goal
+        self.
+
 
     def back_to_start(self):
         self.goal=self.start
         return "GO_UNTIL_OBSTACLE"
 
     def death(self):
-        self.goal=self.start
-        return "GO_UNTIL_OBSTACLE"
+        self.speed=0
+        self.goal=self.start=self.temp
+
+    def statechange(self):
+        if self.battery < 30:
+            return "RECHARGE"
+        elif self.battery == 30:
+            print "Battery Reached Zero Robot Failed"
+            return "DEATH"
+
 
     def battery_callback(self):
     self.battery = self.battery-1;
     print "Battery Left" + str(self.battery)
-    if self.battery < 30:
-        return "RECHARGE"
-    elif self.battery == 30:
-        self.speed=0
-        print "Battery Reached Zero Robot Failed"
-        return "DEATH"
 
     def timelimit_callback(self):
         print "It has been 2 minutes. Going back to start"
         return "GO_TO_START"
-
 
     def step(self):
         self.state = self.states[self.state](self) # did I stutter?
@@ -155,6 +165,8 @@ if __name__ == "__main__":
     (ix, iy, _) = current_location.current_location()
     bug.initial = (ix, iy)
     print "Calibrated"
+    print "Rechargers" 
+    for i in bug.rechargers: print i
     rospy.Timer(rospy.Duration(10), lambda _: bug.battery_callback())
     rospy.Timer(rospy.Duration(120), lambda _: bug.timelimit_callback())
 
