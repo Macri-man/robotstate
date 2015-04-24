@@ -34,7 +34,7 @@ rechargers = [
 
 def battery_callback(event):
     bug.battery -= 1;
-    print "Battery Left " + str(bug.battery)
+    #print "Battery Left " + str(bug.battery)
     if bug.battery < 30:
         bug.recharge=True
   
@@ -61,35 +61,12 @@ def location_callback(data):
 def sensor_callback(data):
     current_dists.update(data)
 
-def recharged(point):
-    Bug.battery=100;
-    print "Recharge Battery at Station", point
-   
-def printrecharge(point):
-    print "Battery is bellow 30 to Recharge Station: ", point
-
-def printgostart(point):
-    print "Failed the Mission Going to Start: ", point
-
-def gorecharge(point):
-    bug.temp=bug,goal
-    bug.goal=point
-    printrecharge(point)
-
-def donerecharge():
-    bug,goal=bug.temp
-    recharged(bug.temp)
-
-def gotostart():
-    bug.goal=bug.start
-    printgostart(bug.start)
-
 def closest_charger(rechargers, x, y):
     distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2,rechargers)
     return filter(lambda closest: closest[0] == min(distance), zip(distance, rechargers))[0][1]
 
 def distance(p1, p2):
-    return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
+    return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
 
 class Bug:
     def __init__(self, gx, gy, battery):
@@ -98,9 +75,9 @@ class Bug:
         self.temp = (None,None)
         self.start = (None,None)
         self.meters10=False
-        self.meters20=False
+        self.greater10=True
         self.greater20=False
-        self.continueing=False
+        self.notcontinueing=False
         self.speed = .5
         self.battery = battery
 
@@ -117,27 +94,29 @@ class Bug:
         self.pub.publish(cmd)
 
     def go_until_obstacle(self):
-        print "Going until destination or obstacle" + str(tx) + " " + str(ty)
-        while current_location.distance(tx, ty) > delta:
-            (frontdist, _) = current_dists.get()
-            if frontdist <= WALL_PADDING:
-                return True
+        #print "Going until destination or obstacle ", self.goal
+        #while current_location.distance(tx, ty) > delta:
+        (frontdist, _) = current_dists.get()
+        if frontdist <= WALL_PADDING:
+            return True
 
-            if current_location.facing_point(tx, ty):
-                self.go(STRAIGHT)
-            elif current_location.faster_left(tx, ty):
-                self.go(LEFT)
-            else:
-                self.go(RIGHT)
-            rospy.sleep(.01)
+        if current_location.facing_point(tx, ty):
+            self.go(STRAIGHT)
+        elif current_location.faster_left(tx, ty):
+            self.go(LEFT)
+        else:
+            self.go(RIGHT)
+        rospy.sleep(.01)
         return False
 
     def follow_wall(self):
         print "Following wall"
         while current_dists.get()[0] <= WALL_PADDING:
+            statechange(bug);
             self.go(RIGHT)
             rospy.sleep(.01)
         while not self.should_leave_wall():
+            statechange(bug);
             (front, left) = current_dists.get()
             if front <= WALL_PADDING:
                 self.go(RIGHT)
@@ -149,9 +128,82 @@ class Bug:
                 self.go(RIGHT)
             rospy.sleep(.01)
 
+    def statechange(self):
+        if self.battery < 30 and self.goal not in rechargers and distance(self.goal,current_location.current_location()[0:2]) > 10:
+            self.gorecharge(closest_charger(rechargers,*current_location.current_location()[0:2]))
+        #elif self.battery == 0:
+            #print "Battery Reached Zero Robot Failed "
+            #sys.exit(1)
+        elif self.goal in rechargers and current_location.distance(*self.goal) <= (delta+.2):
+            self.donerecharge();
+        elif distance(self.goal,current_location.current_location()[0:2]) < 10 and not self.meters10 and not self.notcontinueing:
+            ans = raw_input("Robot is less than 10 meters to goal. Should robot increase speed? (Y/N)")
+            if ans == "y" or ans=="Y":
+                self.speed = 1
+            self.meters10=True
+        elif distance(self.start,current_location.current_location()[0:2]) > 10 and self.greater10and not self.notcontinueing:
+            ans = raw_input("Robot is more than 10 meters from start. Should the robot continue? (Y/n)")
+            if ans == "n" or ans == "N":
+                self.speed = 0
+            self.greater10 = True
+        elif distance(self.start,current_location.current_location()[0:2]) > 20 and distance(self.goal,current_location.current_location()[0:2]) > 20 and not self.meters10 and not self.greater20and not self.notcontinueing:
+            ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
+            self.greater20=True
+            if ans == "g" or ans == "G":
+                print "Continuing to goal"
+            else:
+                self.meters10=True
+                self.greater20=True
+                self.gotostart()
+        elif self.notcontinueing:
+            self.gotostart()
+        else: 
+            self.go_until_obstacle()
+        rospy.sleep(.1)
+
+    def bug_algorithm(self):
+        self.statechange();
+
     def should_leave_wall(self):
         print "You dolt! You need to subclass bug to know how to leave the wall"
         sys.exit(1)
+
+    def step(self):
+        self.statechange();
+        rospy.sleep(.1)
+
+    def battery_callback(self):
+        self.battery -= 30;
+    #print "Battery Left " + str(bug.battery)
+        #if self.battery < 30:
+        #    self.recharge=True
+  
+    def timelimit_callback(self):
+        self.continueing=True
+        print "It has been 2 minutes. Going back to start"
+
+    def recharged(self,point):
+        self.battery=100;
+        print "Recharge Battery at Station", point
+   
+    def printrecharge(self,point):
+        print "Battery is bellow 30 to Recharge Station: ", point
+
+    def printgostart(self,point):
+        print "Failed the Mission Going to Start: ", point
+
+    def gorecharge(self,point):
+        self.temp=self.goal
+        self.goal=point
+        printrecharge(point)
+
+    def donerecharge(self):
+        recharged(self.goal)
+        self.goal=self.temp
+
+    def gotostart(self):
+        self.goal=self.start
+        printgostart(self.start)
 
 class Bug0(Bug):
     def should_leave_wall(self):
@@ -165,48 +217,22 @@ def near(cx, cy, x, y):
     neary = y - .3 <= cy <= y + .3
     return nearx and neary
 
-def bug_algorithm(bug):
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print "Usage: rosrun bugs bug.py X Y"
+        sys.exit(1)
+
+    (tx, ty) = map(float, sys.argv[1:3])
+    print "Setting target:", (tx, ty)
+    bug = Bug(tx, ty,100)
     init_listener()
     print "Calibrating sensors..."
     # This actually just lets the sensor readings propagate into the system
     rospy.sleep(1)
-    bug.start = current_location.current_location()[0:2]
-    print "Calibrated: Start Position " , bug.start
-    rospy.Timer(rospy.Duration(10), battery_callback)
-    rospy.Timer(rospy.Duration(120), timelimit_callback)
-    while current_location.distance(tx, ty) > delta:
-        if bug.battery < 30 and bug.goal not in rechargers and distance(bug.goal,current_location.current_location()[0:2]) < 10:
-            recharge(closest_charger(rechargers,*current_location.current_location()[0:2]))
-        if bug.battery == 0:
-            print "Battery Reached Zero Robot Failed"
-            sys.exit(1)
-        if bug.goal in rechargers and current_location.current_location(*bug.goal) <= (delta+.2):
-            recharged();
-        if distance(bug.goal,current_location.current_location()[0:2]) < 10 and not bug.meters10:
-            ans = raw_input("Robot is less than 10 meters to goal. Should robot increase speed? (Y/N)")
-            if ans == "y" or ans=="Y":
-                bug.speed = 1
-            bug.meters10=True
-        if distance(bug.start,current_location.current_location()[0:2]) > 20 and distance(bug.goal,current_location.current_location()[0:2]) > 20 and not bug.meters10 and not bug.meters20 and not bug.greater20:
-            ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
-            bug.greater20=True
-            if ans == "g" or ans == "G":
-                print "Continuing to goal"
-            else:
-                gotostart()
-        hit_wall = bug.go_until_obstacle()
-        if hit_wall:
-            bug.follow_wall()
-    print "Arrived at", (tx, ty)
-
-# Parse arguments
-
-if len(sys.argv) < 3:
-    print "Usage: rosrun bugs bug.py X Y"
-    sys.exit(1)
-(tx, ty) = map(float, sys.argv[1:3])
-
-print "Setting target:", (tx, ty)
-bug = Bug0(tx, ty, 100)
-
-bug_algorithm(bug)
+    print "Calibrated"
+    (sx, sy, _) = current_location.current_location()
+    bug.start = (sx, sy)
+    rospy.Timer(rospy.Duration(10), lambda _: bug.battery_callback)
+    rospy.Timer(rospy.Duration(120), lambda _: bug.timelimit_callback)
+    while current_location.distance(*bug.goal) > delta:
+        bug.step()

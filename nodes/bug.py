@@ -28,7 +28,7 @@ RIGHT = 2
 MSG_STOP = 3
 
 def distance(p1, p2):
-    return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
+    return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
 
 def init_listener():
     rospy.init_node('listener', anonymous=True)
@@ -52,7 +52,7 @@ class Bug:
     def __init__(self, gx, gy, sx ,sy):
         self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         self.goal = (gx,gy)
-        self.temp = (NONE,NONE)
+        self.temp = (None,None)
         self.start = (sx,sy)
         self.battery = 100
         self.speed = .5
@@ -150,9 +150,9 @@ class Bug:
         if self.battery == 0:
             print "Battery Reached Zero Robot Failed"
             return "DEATH"
-        if self.goal in self.rechargers and current_location.current_location(*self.goal) <= (delta+.2):
+        if self.goal in self.rechargers and current_location.distance(*self.goal) <= (delta+.2):
             return "RECHARGED"
-        if distance(self.goal,*current_location.current_location()[0:2]) < 10 and not self.meters10:
+        if distance(self.goal,current_location.current_location()[0:2]) < 10 and not self.meters10:
             ans = raw_input("Robot is less than 10 meters to goal. Should robot increase speed? (Y/N)")
             if ans == "y" or ans=="Y":
                 self.speed = 1
@@ -166,15 +166,14 @@ class Bug:
                 print "Returning to Start"
                 return "TOSTART"
         return "GO_UNTIL_OBSTACLE"
-        rospy.sleep(.1)
 
     def closest_charger(rechargers, x, y):
-    distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2,rechargers)
-    return filter(lambda closest: closest[0] == min(distance), zip(distance, rechargers))[0][1]
+        distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2,rechargers)
+        return filter(lambda closest: closest[0] == min(distance), zip(distance, rechargers))[0][1]
 
     def battery_callback(self):
-    self.battery -= 1;
-    print "Battery Left " + str(self.battery)
+        self.battery -= 1;
+        print "Battery Left " + str(self.battery)
 
     def timelimit_callback(self):
         print "It has been 2 minutes. Going back to start"
