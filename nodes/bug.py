@@ -130,7 +130,6 @@ class Bug:
         print "Going to Charging Station at ", self.goal
         return "GO_UNTIL_OBSTACLE"
 
-
     def recharged(self):
         self.goal=self.temp
         self.battery=100
@@ -146,19 +145,19 @@ class Bug:
         self.goal=current_location.current_location()[0:2]
 
     def statechange(self):
-        if self.battery < 30  and self.goal not in self.rechargers and distance(self.goal,*current_location.distance()[0:2]) < 10:
+        if self.battery < 30  and self.goal not in self.rechargers and distance(self.goal,*current_location.current_location()[0:2]) < 10:
             return "RECHARGE"
         if self.battery == 0:
             print "Battery Reached Zero Robot Failed"
             return "DEATH"
-        if self.goal in self.rechargers and current_location.distance(*self.goal) <= delta+.2):
+        if self.goal in self.rechargers and current_location.current_location(*self.goal) <= (delta+.2):
             return "RECHARGED"
-        if distance(self.goal,*current_location.distance()[0:2]) < 10 and not self.meters10:
+        if distance(self.goal,*current_location.current_location()[0:2]) < 10 and not self.meters10:
             ans = raw_input("Robot is less than 10 meters to goal. Should robot increase speed? (Y/N)")
             if ans == "y" or ans=="Y":
                 self.speed = 1
             self.meters10=True
-        if distance(self.start,*current_location.distance()[0:2]) > 20 and distance(self.goal,*current_location.distance()[0:2]) > 20 and not self.meters10 and not self.meters20 and not self.greater20:
+        if distance(self.start,*current_location.current_location()[0:2]) > 20 and distance(self.goal,*current_location.current_location()[0:2]) > 20 and not self.meters10 and not self.meters20 and not self.greater20:
             ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
             greater20=True
             if ans == "g" or ans == "G":
@@ -167,11 +166,10 @@ class Bug:
                 print "Returning to Start"
                 return "TOSTART"
         return "GO_UNTIL_OBSTACLE"
-
         rospy.sleep(.1)
 
     def closest_charger(rechargers, x, y):
-    distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2, rechargers)
+    distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2,rechargers)
     return filter(lambda closest: closest[0] == min(distance), zip(distance, rechargers))[0][1]
 
     def battery_callback(self):
