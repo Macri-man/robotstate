@@ -52,7 +52,7 @@ def sensor_callback(data):
     current_dists.update(data)
 
 def closest_charger(rechargers, x, y):
-    distance = map(lambda station: (station[0]-x)**2 + (station[1]-y)**2,rechargers)
+    distance = map(lambda station: distance(p,(x,y)),rechargers)
     return filter(lambda closest: closest[0] == min(distance), zip(distance, rechargers))[0][1]
 
 def distance(p1, p2):
@@ -128,7 +128,7 @@ class Bug:
 
     def statechange(self):
         if self.recharge and self.goal not in rechargers and distance(self.goal,current_location.current_location()[0:2]) > 10:
-            self.gorecharge(closest_charger(rechargers,*current_location.current_location()[0:2]))
+            self.gorecharge()
         #elif self.battery == 0:
             #print "Battery Reached Zero Robot Failed "
             #sys.exit(1)
@@ -153,7 +153,7 @@ class Bug:
                 self.meters10=True
                 self.greater20=True
                 self.gotostart()
-        elif self.notcontinueing:
+        else self.notcontinueing:
             self.gotostart()
         rospy.sleep(.1)
 
@@ -167,10 +167,9 @@ class Bug:
         rospy.sleep(.1)
 
     def battery_callback(self):
-        self.battery -= 30;
-    #print "Battery Left " + str(bug.battery)
-        #if self.battery < 30:
-        #    self.recharge=True
+        self.battery -= 1;
+        if self.battery < 30:
+            self.recharge=True
   
     def timelimit_callback(self):
         self.continueing=True
@@ -186,9 +185,9 @@ class Bug:
     def printgostart(self,point):
         print "Failed the Mission Going to Start: ", point
 
-    def gorecharge(self,point):
+    def gorecharge(self):
         self.temp=self.goal
-        self.goal=point
+        self.goal=closest_charger(rechargers,*current_location.current_location()[0:2])
         printrecharge(point)
 
     def donerecharge(self):
