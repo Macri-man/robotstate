@@ -100,7 +100,7 @@ class Bug:
             self.go(RIGHT)
         rospy.sleep(.01)
         self.statechange()
-        self.follow_wall()
+        self.go_until_obstacle()
 
     def follow_wall(self):
         #print "Following wall"
@@ -120,6 +120,11 @@ class Bug:
             else:
                 self.go(RIGHT)
             rospy.sleep(.01)
+            self.statechange()
+            self.follow_wall()
+        else:
+            self.statechange()
+            self.go_until_obstacle()
 
     def statechange(self):
         if self.recharge and self.goal not in rechargers and distance(self.goal,current_location.current_location()[0:2]) > 10:
@@ -138,7 +143,7 @@ class Bug:
             ans = raw_input("Robot is more than 10 meters from start. Should the robot continue? (Y/n)")
             if ans == "n" or ans == "N":
                 self.speed = 0
-            self.greater10 = True
+            self.greater10 = False
         elif distance(self.start,current_location.current_location()[0:2]) > 20 and distance(self.goal,current_location.current_location()[0:2]) > 20 and not self.meters10 and not self.greater20 and not self.notcontinueing:
             ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
             self.greater20=True
@@ -150,20 +155,15 @@ class Bug:
                 self.gotostart()
         elif self.notcontinueing:
             self.gotostart()
-        else: 
-            if self.go_until_obstacle():
-                self.follow_wall()
         rospy.sleep(.1)
-
-    def bug_algorithm(self):
-        self.statechange();
 
     def should_leave_wall(self):
         print "You dolt! You need to subclass bug to know how to leave the wall"
         sys.exit(1)
 
     def step(self):
-        self.statechange();
+        self.statechange()
+        self.go_until_obstacle()
         rospy.sleep(.1)
 
     def battery_callback(self):
