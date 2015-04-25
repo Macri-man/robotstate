@@ -153,7 +153,7 @@ class Bug:
                 self.meters10=True
                 self.greater20=True
                 self.gotostart()
-        else self.notcontinueing:
+        elif self.notcontinueing:
             self.gotostart()
         rospy.sleep(.1)
 
@@ -212,7 +212,7 @@ def near(cx, cy, x, y):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print "Usage: rosrun bugs bug.py X Y"
+        print "Usage: rosrun bugs mybug.py X Y"
         sys.exit(1)
 
     (tx, ty) = map(float, sys.argv[1:3])
