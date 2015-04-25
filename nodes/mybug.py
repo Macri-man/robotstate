@@ -26,21 +26,11 @@ RIGHT = 2
 MSG_STOP = 3
 
 rechargers = [
-    (random.randrange(0,20),random.randrange(0,20)),
-    (random.randrange(0,20),random.randrange(0,20)),
-    (random.randrange(0,20),random.randrange(0,20)),
-    (random.randrange(0,20),random.randrange(0,20)),
+    (random.randrange(0,15),random.randrange(0,15)),
+    (random.randrange(0,15),random.randrange(0,15)),
+    (random.randrange(0,15),random.randrange(0,15)),
+    (random.randrange(0,15),random.randrange(0,15)),
 ]
-
-def battery_callback(event):
-    bug.battery -= 1;
-    #print "Battery Left " + str(bug.battery)
-    if bug.battery < 30:
-        bug.recharge=True
-  
-def timelimit_callback(event):
-    bug.continueing=True
-    print "It has been 2 minutes. Going back to start"
 
 def init_listener():
     rospy.init_node('listener', anonymous=True)
@@ -79,6 +69,7 @@ class Bug:
         self.greater20=False
         self.notcontinueing=False
         self.speed = .5
+        self.recharge = False
         self.battery = battery
 
     def go(self, direction):
@@ -98,25 +89,27 @@ class Bug:
         #while current_location.distance(tx, ty) > delta:
         (frontdist, _) = current_dists.get()
         if frontdist <= WALL_PADDING:
-            return True
+            self.statechange()
+            self.follow_wall()
 
-        if current_location.facing_point(tx, ty):
+        if current_location.facing_point(*self.goal):
             self.go(STRAIGHT)
-        elif current_location.faster_left(tx, ty):
+        elif current_location.faster_left(*self.goal):
             self.go(LEFT)
         else:
             self.go(RIGHT)
         rospy.sleep(.01)
-        return False
+        self.statechange()
+        self.follow_wall()
 
     def follow_wall(self):
-        print "Following wall"
-        while current_dists.get()[0] <= WALL_PADDING:
-            statechange(bug);
+        #print "Following wall"
+        if current_dists.get()[0] <= WALL_PADDING:
             self.go(RIGHT)
+            self.statechange()
+            self.follow_wall()
             rospy.sleep(.01)
-        while not self.should_leave_wall():
-            statechange(bug);
+        if not self.should_leave_wall():
             (front, left) = current_dists.get()
             if front <= WALL_PADDING:
                 self.go(RIGHT)
@@ -129,7 +122,7 @@ class Bug:
             rospy.sleep(.01)
 
     def statechange(self):
-        if self.battery < 30 and self.goal not in rechargers and distance(self.goal,current_location.current_location()[0:2]) > 10:
+        if self.recharge and self.goal not in rechargers and distance(self.goal,current_location.current_location()[0:2]) > 10:
             self.gorecharge(closest_charger(rechargers,*current_location.current_location()[0:2]))
         #elif self.battery == 0:
             #print "Battery Reached Zero Robot Failed "
@@ -141,12 +134,12 @@ class Bug:
             if ans == "y" or ans=="Y":
                 self.speed = 1
             self.meters10=True
-        elif distance(self.start,current_location.current_location()[0:2]) > 10 and self.greater10and not self.notcontinueing:
+        elif distance(self.start,current_location.current_location()[0:2]) > 10 and self.greater10 and not self.notcontinueing:
             ans = raw_input("Robot is more than 10 meters from start. Should the robot continue? (Y/n)")
             if ans == "n" or ans == "N":
                 self.speed = 0
             self.greater10 = True
-        elif distance(self.start,current_location.current_location()[0:2]) > 20 and distance(self.goal,current_location.current_location()[0:2]) > 20 and not self.meters10 and not self.greater20and not self.notcontinueing:
+        elif distance(self.start,current_location.current_location()[0:2]) > 20 and distance(self.goal,current_location.current_location()[0:2]) > 20 and not self.meters10 and not self.greater20 and not self.notcontinueing:
             ans = raw_input("Robot is more than 20 meters from goal and from start. press s to return to start or g to go to reach goal?")
             self.greater20=True
             if ans == "g" or ans == "G":
@@ -158,7 +151,8 @@ class Bug:
         elif self.notcontinueing:
             self.gotostart()
         else: 
-            self.go_until_obstacle()
+            if self.go_until_obstacle():
+                self.follow_wall()
         rospy.sleep(.1)
 
     def bug_algorithm(self):
@@ -205,12 +199,12 @@ class Bug:
         self.goal=self.start
         printgostart(self.start)
 
-class Bug0(Bug):
     def should_leave_wall(self):
         (x, y, t) = current_location.current_location()
-        dir_to_go = current_location.global_to_local(necessary_heading(x, y, tx, ty))
-        at = current_dists.at(dir_to_go)
-        return at > 10
+        g = current_location.global_to_local(necessary_heading(x, y, *self.goal))
+        at = current_dists.at(g)
+        (_, left) = current_dists.get()
+        return at > 10# and left > WALL_PADDING
 
 def near(cx, cy, x, y):
     nearx = x - .3 <= cx <= x + .3
